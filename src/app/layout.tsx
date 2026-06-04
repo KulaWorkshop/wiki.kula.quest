@@ -1,6 +1,7 @@
 import { RootProvider } from 'fumadocs-ui/provider/next';
 
 import './global.css';
+import { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 
 const inter = Inter({
@@ -16,3 +17,7 @@ export default function Layout({ children }: LayoutProps<'/'>) {
         </html>
     );
 }
+
+export const metadata: Metadata = {
+    icons: { icon: '/icon.svg' },
+};
