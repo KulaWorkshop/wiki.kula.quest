@@ -19,7 +19,23 @@ html > body[data-scroll-locked] {
     --color-fd-primary: #cba6f7;
 }
 
+/* fix footnote jump anchor offset */
 [id^='user-content-fnref-'],
 [id^='user-content-fn-'] {
     scroll-margin-top: var(--fd-nav-height, 4rem);
+}
+
+/* fix footnote iOS Safari icon rendering */
+a[data-footnote-backref] {
+    font-size: 0;
+    text-decoration: none;
+    vertical-align: middle;
+}
+
+a[data-footnote-backref]::after {
+    content: '↩\FE0E';
+    font-size: 0.875rem;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+    vertical-align: middle;
 }
