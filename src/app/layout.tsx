@@ -69,13 +69,13 @@ export const metadata: Metadata = {
         url: siteUrl,
         title: appName,
         description: siteDescription,
-        images: [{ url: '/og/docs/image.webp', width: 1200, height: 630, alt: appName }],
+        images: [{ url: '/og/image.webp', width: 1200, height: 630, alt: appName }],
     },
     twitter: {
         card: 'summary_large_image',
         title: appName,
         description: siteDescription,
-        images: ['/og/docs/image.webp'],
+        images: ['/og/image.webp'],
         creator: `@${siteAuthor}`,
     },
     alternates: {
