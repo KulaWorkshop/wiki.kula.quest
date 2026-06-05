@@ -11,7 +11,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 
 import { getMDXComponents } from '@/components/mdx';
-import { gitConfig } from '@/lib/shared';
+import { appName, gitConfig, siteAuthor, siteUrl } from '@/lib/shared';
 import { getPageImage, getPageMarkdownUrl, source } from '@/lib/source';
 
 export default async function Page(props: PageProps<'/[[...slug]]'>) {
@@ -54,11 +54,28 @@ export async function generateMetadata(props: PageProps<'/[[...slug]]'>): Promis
     const page = source.getPage(params.slug);
     if (!page) notFound();
 
+    const pageUrl = `${siteUrl}${page.url}`;
+    const ogImage = getPageImage(page).url;
+
     return {
         title: page.data.title,
         description: page.data.description,
+        authors: [{ name: siteAuthor, url: siteUrl }],
+        alternates: { canonical: pageUrl },
         openGraph: {
-            images: getPageImage(page).url,
+            type: 'article',
+            siteName: appName,
+            url: pageUrl,
+            title: page.data.title,
+            description: page.data.description,
+            images: [{ url: ogImage, width: 1200, height: 630, alt: page.data.title }],
+            authors: [siteAuthor],
+        },
+        twitter: {
+            card: 'summary_large_image',
+            title: page.data.title,
+            description: page.data.description,
+            images: [ogImage],
         },
     };
 }
