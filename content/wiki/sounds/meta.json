@@ -1,0 +1,5 @@
+{
+    "name": "Sounds",
+    "icon": "FileSignal",
+    "pages": ["sfx", "table"]
+}

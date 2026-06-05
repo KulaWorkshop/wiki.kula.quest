@@ -1,3 +1,19 @@
 {
-    "pages": ["---About---", "index"]
+    "pages": [
+        "---About---",
+        "index",
+        "---Tools---",
+        "tools/quilt",
+        "---Game Content---",
+        "content/releases",
+        "content/main-releases",
+        "content/soundtracks",
+        "---File Formats---",
+        "formats",
+        "archives",
+        "levels",
+        "graphics",
+        "sounds",
+        "music"
+    ]
 }

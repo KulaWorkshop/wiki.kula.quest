@@ -1,0 +1,5 @@
+{
+    "name": "Archives",
+    "icon": "FileArchive",
+    "pages": ["pak", "kub"]
+}

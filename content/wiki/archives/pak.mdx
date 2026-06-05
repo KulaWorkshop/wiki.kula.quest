@@ -1,0 +1,86 @@
+---
+title: Pak Format
+description: A custom binary archive format for storing multiple files with compression.
+---
+
+## Overview
+
+**.PAK** is the archive format used in KulaQuest to bundle multiple compressed files, most notably for storing levels in a world.
+Each archive consists of a header table containing per-entry offset and size records, filenames, and compressed file data.
+
+Files are compressed individually using the [**zlib**](https://zlib.net/) compression algorithm, and can be identified by a magic signature of `0x789C` at the start of each compressed buffer.
+All values are in [**little endian**](https://en.wikipedia.org/wiki/Endianness), and the primitive types can be found [here](/formats#data-types).
+
+## Layout
+
+<BinaryStruct name="PakFile">
+
+| Offset(h)                                 | Size            | Type        | Description                                           |
+| ----------------------------------------- | --------------- | ----------- | ----------------------------------------------------- |
+| 0x00                                      | 4               | u32         | File count                                            |
+| 0x04                                      | file_count \* 8 | FileEntry[] | File entries                                          |
+| 4 + (file_count \* 8)                     | 4 \* file_count | u32[]       | Filename offsets                                      |
+| 4 + (file_count \* 8) + (4 \* file_count) | -               | string[]    | Null-terminated filenames (padded to 4-byte boundary) |
+| -                                         | -               | u8[]        | Compressed file data                                  |
+
+</BinaryStruct>
+
+## File Entry Table
+
+The first 4 bytes in the file specify how many compressed files are inside the archive.
+Immediately after is the file entry table; one record per file, stored contiguously starting at `0x04`.
+Each record contains the absolute offset to the compressed file data and the compressed size of the file in bytes.
+
+<BinaryStruct name="FileEntry" size="8 bytes">
+
+| Offset(h) | Size | Type | Description                             |
+| --------- | ---- | ---- | --------------------------------------- |
+| +0x00     | 4    | u32  | Absolute offset to compressed file data |
+| +0x04     | 4    | u32  | Size of compressed file in bytes        |
+
+</BinaryStruct>
+
+Entry `n` is stored at offset `0x04 + (n * 8)`.
+
+## Filename Offset Table
+
+Immediately follows the file entry table, beginning at offset `0x04 + (file_count * 8)`.
+
+<BinaryStruct name="FilenameOffsetTable">
+
+| Offset(h)                | Size            | Type            | Description                                   |
+| ------------------------ | --------------- | --------------- | --------------------------------------------- |
+| 0x04 + (file_count \* 8) | 4 \* file_count | u32[file_count] | Array of absolute offsets to filename strings |
+
+</BinaryStruct>
+
+Entry `n` is stored at offset `0x04 + (file_count * 8) + (n * 4)`.
+All offsets may point to the same address if filenames are **suppressed** (see below).
+
+## Filename Data
+
+A sequence of null-terminated strings.
+In the original game data, these strings are conventionally terminated with a newline and null terminator (`\n\0`), though the newline character is not required and serves no functional purpose.
+The entire block is padded to align to a 4-byte boundary, sometimes with [garbage data](#oddities).
+
+Some Pak archives contain files that don't have any filenames, for example, the Pak files for the HUD textures embedded inside the game's executable.
+If no filenames are present, the entire block is a null dword (`0x00000000`) and all filename offset records point to it, yielding an empty string.
+
+## File Data
+
+Each file's data is a standalone [**zlib**](https://zlib.net/) stream located at the absolute offset specified in the file entry table.
+The stream begins with the standard zlib header bytes `0x78 0x9C` (default compression).
+Decompression is performed with a standard zlib inflate operation on exactly `size` bytes read from `offset`.
+Since the decompressed size is not stored in the archive, the zlib decoder must determine it dynamically.
+
+## Oddities
+
+Some Pak files contain residual data after the filenames:
+
+| File                    | Bytes (h)   | ASCII  |
+| ----------------------- | ----------- | ------ |
+| FIELDFI.PAK, HAZEFI.PAK | 4D 4F 4E 20 | "MON " |
+| HILLSFI.PAK             | 53 49       | "SI"   |
+
+These fragments appear to be remnants from the **SIMON** naming convention for levels found in `COPYCAT.PAK`, suggesting these archives were produced by a tool that left a partially-overwritten string in the padding region.
+These bytes serve no functional purpose.

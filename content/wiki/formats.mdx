@@ -1,0 +1,32 @@
+---
+title: Overview
+description: An overview of the file formats used in KulaQuest.
+icon: Files
+---
+
+Technical specifications are available for all of KulaQuest's custom binary formats:
+
+| Format                        | Extension  | Description                                                                 |
+| ----------------------------- | ---------- | --------------------------------------------------------------------------- |
+| [PAK Archive](/archives/pak)  | .PAK       | An archive format for storing multiple compressed files.                    |
+| [KUB Archive](/archives/kub)  | .KUB, .PIC | An archive format for storing multiple compressed files in the oldest demo. |
+| [SFX Format](/sounds/sfx)     | .SFX       | An archive format for storing sound effect data.                            |
+| [TGI Format](/graphics/tgi)   | .TGI       | An archive format for storing theme-specific assets.                        |
+| [GGI Format](/graphics/ggi)   | .GGI       | An archive format for storing global game assets.                           |
+| [Level Format](/levels/level) | _None_     | A binary format for storing individual level data.                          |
+
+## Data Types
+
+All values are in [**little endian**](https://en.wikipedia.org/wiki/Endianness), and the following primitive types will be used throughout all formats:
+
+| Encoding | Description             |
+| -------- | ----------------------- |
+| u8       | Unsigned 8-bit integer  |
+| u16      | Unsigned 16-bit integer |
+| u32      | Unsigned 32-bit integer |
+| u64      | Unsigned 64-bit integer |
+| i8       | Signed 8-bit integer    |
+| i16      | Signed 16-bit integer   |
+| i32      | Signed 32-bit integer   |
+| i64      | Signed 64-bit integer   |
+| string   | C-style null-terminated |

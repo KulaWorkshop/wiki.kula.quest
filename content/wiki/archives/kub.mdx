@@ -1,0 +1,46 @@
+---
+title: Kub Format
+description: A custom binary archive format for storing multiple files with compression in the oldest demo.
+---
+
+## Overview
+
+**.KUB** (also known as **.PIC**) is the binary archive format used for storing compressed levels and end screenshots in the first demo of the game.
+This format was eventually superseded by the [**.PAK**](/archives/pak) format used in later versions of the game, with the only differences being that the Kub **doesn't** store filenames and uses a different compression algorithm.
+
+Files are compressed individually using [**lzrw3a**](http://www.ross.net/compression/lzrw3a.html) instead, an old and somewhat obscure compression algorithm.
+All values are in [**little endian**](https://en.wikipedia.org/wiki/Endianness), and the primitive types can be found [here](/formats#data-types).
+
+## Layout
+
+<BinaryStruct name="KubFile">
+
+| Offset(h)             | Size            | Type        | Description          |
+| --------------------- | --------------- | ----------- | -------------------- |
+| 0x00                  | 4               | u32         | File count           |
+| 0x04                  | file_count \* 8 | FileEntry[] | File entries         |
+| 4 + (file_count \* 8) | -               | u8[]        | Compressed file data |
+
+</BinaryStruct>
+
+## File Entry Table
+
+The first 4 bytes in the file specify how many compressed files are inside the archive.
+Immediately after is the file entry table; one record per file, stored contiguously starting at `0x04`.
+Each record contains the absolute offset to the compressed file data and the compressed size of the file in bytes.
+
+<BinaryStruct name="FileEntry" size="8 bytes">
+
+| Offset(h) | Size | Type | Description                             |
+| --------- | ---- | ---- | --------------------------------------- |
+| +0x00     | 4    | u32  | Absolute offset to compressed file data |
+| +0x04     | 4    | u32  | Size of compressed file in bytes        |
+
+</BinaryStruct>
+
+Entry `n` is stored at offset `0x04 + (n * 8)`.
+
+## File Data
+
+The file data starts immediately after the file entry table.
+Each buffer starts with a null dword (`0x00000000`), signifying a standalone [**lzrw3a**](http://www.ross.net/compression/lzrw3a.html) stream located at the absolute offset specified in the file entry table.

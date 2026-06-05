@@ -1,0 +1,5 @@
+{
+    "name": "Levels",
+    "icon": "FileBox",
+    "pages": ["level", "objects"]
+}

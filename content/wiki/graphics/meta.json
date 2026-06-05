@@ -1,0 +1,5 @@
+{
+    "name": "Graphics",
+    "icon": "FileImage",
+    "pages": ["ggi", "tgi"]
+}
