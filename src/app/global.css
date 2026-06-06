@@ -13,10 +13,36 @@ html > body[data-scroll-locked] {
 
 :root {
     --color-fd-primary: #8839ef;
+    --color-fd-tip: #a8b1ff;
+    --vp-c-text-2: #515c67;
+    --vp-c-gray-soft: #8e96aa24;
+    --vp-c-indigo-1: #3451b2;
+    --vp-c-indigo-soft: #646cff24;
+    --vp-c-purple-1: #6f42c1;
+    --vp-c-purple-soft: #9f7aea24;
+    --vp-c-green-1: #18794e;
+    --vp-c-green-soft: #10b98124;
+    --vp-c-yellow-1: #915930;
+    --vp-c-yellow-soft: #eab30824;
+    --vp-c-red-1: #b8272c;
+    --vp-c-red-soft: #f43f5e24;
 }
 
 .dark {
     --color-fd-primary: #cba6f7;
+    --color-fd-tip: #a8b1ff;
+    --vp-c-text-2: #98989f;
+    --vp-c-gray-soft: #65758529;
+    --vp-c-indigo-1: #a8b1ff;
+    --vp-c-indigo-soft: #646cff29;
+    --vp-c-purple-1: #c8abfa;
+    --vp-c-purple-soft: #9f7aea29;
+    --vp-c-green-1: #3dd68c;
+    --vp-c-green-soft: #10b98129;
+    --vp-c-yellow-1: #f9b44e;
+    --vp-c-yellow-soft: #eab30829;
+    --vp-c-red-1: #f66f81;
+    --vp-c-red-soft: #f43f5e29;
 }
 
 /* fix footnote jump anchor offset */
