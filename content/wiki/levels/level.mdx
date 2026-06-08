@@ -43,6 +43,13 @@ The first block at coordinates (0, 0, 0) begins on the top-left-back corner of t
 
 ![Level grid layout](/assets/levels/grid-layout.webp)
 
+<Callout>
+
+The axes in the current level editor are **not accurate** to the game's coordinate system.
+As a result, the level editor should not be used as a reference for coordinate-related work.
+
+</Callout>
+
 The first **78,608** bytes of the file contain an array of 16-bit integers, one for each block in the grid.
 As referenced above, the first value in this section corresponds to the first block in the level (coordinates (0, 0, 0)), with the last value corresponding to the last block in the level.
 A cell at grid coordinates (x, y, z) can be accessed using the following formula:
