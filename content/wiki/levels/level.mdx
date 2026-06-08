@@ -71,35 +71,45 @@ The first block of this type must always start at **5**, and is incremented for 
 ## Coordinate System
 
 Two types of coordinate systems are used in this format — **block coordinates** and **entity coordinates**.
-Here's an example of both systems:
+Block coordinates reference positions in the grid, where each unit corresponds to one block.
+Entity coordinates are used for records that require sub-block precision, such as the moving block's current position and the player's position.
+Entity coordinates use the same 16-bit format as block coordinates, but at a finer scale: **1 block unit = 512 entity units**.
+The upper bits of an entity coordinate give the block index, and the lower 9 bits (0-511) represent the sub-block position within that block.
 
-- `11 00 10 00 11 00` - Block coordinate
-- `00 22 00 20 9C 20` - Entity coordinate
+Conversion between the two systems:
 
-The block coordinate system is primarily used for referencing block positions in grid.
-Objects and entities in game that need to use a finer position value, such as the moving block and current player position, use the entity coordinate system.
+```c
+// Block to entity (center of block)
+short entityCoord = blockCoord * 512;
 
-An entity coordinate value is **double** the amount of a block coordinate value, with the bytes swapped, where the first byte is used as fine tune.
-In the examples above, we have a block at coordinates (17, 16, 17) using the block coordinate system, with the player positioned on top of it using the entity coordinate system.
+// Entity to block (rounded to nearest block)
+short blockCoord = (entityCoord + 256) >> 9;
+```
+
+Here's an example of both systems referencing the same position: a player positioned on top of block (17, 16, 17):
+
+- `11 00 10 00 11 00` - Block coordinate (17, 16, 17)
+- `00 22 00 20 9C 20` - Entity coordinate (8704, 8192, 8348)
+
 The following structures will be used to represent both systems throughout this document:
 
-<BinaryStruct name="BlockPosition">
+<BinaryStruct name="BlockPosition" size="6 bytes">
 
-| Offset(h) | Size | Type | Description |
-| --------- | ---- | ---- | ----------- |
-| +0x00     | 2    | i16  | X position  |
-| +0x02     | 2    | i16  | Y position  |
-| +0x04     | 2    | i16  | Z position  |
+| Offset(h) | Size | Type | Description                   |
+| --------- | ---- | ---- | ----------------------------- |
+| +0x00     | 2    | i16  | X position (1 unit = 1 block) |
+| +0x02     | 2    | i16  | Y position (1 unit = 1 block) |
+| +0x04     | 2    | i16  | Z position (1 unit = 1 block) |
 
 </BinaryStruct>
 
-<BinaryStruct name="EntityPosition">
+<BinaryStruct name="EntityPosition" size="6 bytes">
 
-| Offset(h) | Size | Type | Description                |
-| --------- | ---- | ---- | -------------------------- |
-| +0x00     | 2    | i16  | X position (more accuracy) |
-| +0x02     | 2    | i16  | Y position (more accuracy) |
-| +0x04     | 2    | i16  | Z position (more accuracy) |
+| Offset(h) | Size | Type | Description                            |
+| --------- | ---- | ---- | -------------------------------------- |
+| +0x00     | 2    | i16  | X position (1 unit = 1/512 of a block) |
+| +0x02     | 2    | i16  | Y position (1 unit = 1/512 of a block) |
+| +0x04     | 2    | i16  | Z position (1 unit = 1/512 of a block) |
 
 </BinaryStruct>
 
@@ -120,7 +130,7 @@ The following table will be used throughout this document to indicate a directio
 
 Immediately after the block grid data begins these 16-bit values:
 
-<BinaryStruct name="BlockAndRecordCount">
+<BinaryStruct name="BlockAndRecordCount" size="6 bytes">
 
 | Offset(h) | Size | Type | Description  |
 | --------- | ---- | ---- | ------------ |
@@ -138,14 +148,14 @@ For an unknown reason, the padding value in-between is sometimes set to -1 in ce
 
 There are a lot of different types of special blocks used in game, each requiring additional information defined below towards the end of the file, right after the previous section.
 Each record is a chunk of **256** bytes.
-The game determiens the type of record based on the first value in the record.
+The game determines the type of record based on the first value in the record.
 
 ## Object Block Record<Badge text="0-4" />
 
 The following structure applies to blocks that contain **objects**, i.e. anything that is assigned to a specific side of a block, like items and traps.
 [Moving](#moving-block), [crumbling](#crumbling-block), [flashing](#flashing-block), and [laser](#laser-block) blocks follow a different structure, and have dedicated sections respectively below.
 
-<BinaryStruct name="ObjectBlockRecord">
+<BinaryStruct name="ObjectBlockRecord" size="256 bytes">
 
 | Offset(h) | Size | Type          | Description                       |
 | --------- | ---- | ------------- | --------------------------------- |
@@ -163,26 +173,26 @@ The following structure applies to blocks that contain **objects**, i.e. anythin
 
 Each object contains **32** bytes of information pertaining to its type, various states, and appearance:
 
-<BinaryStruct name="Object">
+<BinaryStruct name="Object" size="32 bytes">
 
-| Offset(h) | Size | Type | Description                                       |
-| --------- | ---- | ---- | ------------------------------------------------- |
-| +0x00     | 2    | i16  | ID                                                |
-| +0x02     | 2    | i16  | Direction                                         |
-| +0x04     | 2    | i16  | Variant                                           |
-| +0x06     | 2    | i16  | State                                             |
-| +0x08     | 2    | i16  | Item state index _(set automatically in memory)_  |
-| +0x0A     | 2    | i16  | Toggle object 1 _(buttons and transporters only)_ |
-| +0x0C     | 2    | i16  | Toggle object 2 _(buttons and transporters only)_ |
-| +0x0E     | 2    | i16  | Vertex buffer index (0)                           |
-| +0x10     | 2    | i16  | Ground offset _(demo only)_                       |
-| +0x12     | 2    | i16  | Rotation type _(demo only)_                       |
-| +0x14     | 2    | i16  | Animation phase 1 _(memory only, default: -1)_    |
-| +0x16     | 2    | i16  | Animation phase 2 _(memory only, default: -1)_    |
-| +0x18     | 2    | i16  | Animation phase 3 _(memory only, default: -1)_    |
-| +0x1A     | 2    | i16  | Rotation speed _(demo only)_                      |
-| +0x1C     | 2    | i16  | Animation counter _(memory only, default: -1)_    |
-| +0x1E     | 2    | i16  | Animation state _(memory only, dzefault: -1)_     |
+| Offset(h) | Size | Type | Description                                          |
+| --------- | ---- | ---- | ---------------------------------------------------- |
+| +0x00     | 2    | i16  | ID                                                   |
+| +0x02     | 2    | i16  | Direction                                            |
+| +0x04     | 2    | i16  | Variant                                              |
+| +0x06     | 2    | i16  | State                                                |
+| +0x08     | 2    | i16  | Item state index _(set automatically in memory)_     |
+| +0x0A     | 2    | i16  | Object reference 1 _(buttons and transporters only)_ |
+| +0x0C     | 2    | i16  | Object reference 2 _(buttons and transporters only)_ |
+| +0x0E     | 2    | i16  | Vertex buffer index (0)                              |
+| +0x10     | 2    | i16  | Ground offset _(demo only)_                          |
+| +0x12     | 2    | i16  | Rotation type _(demo only)_                          |
+| +0x14     | 2    | i16  | Animation phase 1 _(memory only, default: -1)_       |
+| +0x16     | 2    | i16  | Animation phase 2 _(memory only, default: -1)_       |
+| +0x18     | 2    | i16  | Animation phase 3 _(memory only, default: -1)_       |
+| +0x1A     | 2    | i16  | Rotation speed _(demo only)_                         |
+| +0x1C     | 2    | i16  | Animation counter _(memory only, default: -1)_       |
+| +0x1E     | 2    | i16  | Animation state _(memory only, default: -1)_         |
 
 </BinaryStruct>
 
@@ -194,13 +204,13 @@ Here is an interactive example of the block that contains the level exit from th
     schema={[
         { skip: 6 },
         { bytes: 2, label: 'Block Type (0 - Normal)', color: '#da70d6' },
-        { bytes: 2, label: 'Top Object ID (7 - Exit)', color: '#fb923c' },
+        { bytes: 2, label: 'Z- Object ID (7 - Exit)', color: '#fb923c' },
         { bytes: 2, label: 'Direction', color: '#ef4444' },
         { bytes: 2, label: 'Variant', color: '#ef4444' },
         { bytes: 2, label: 'State (2 - Locked)', color: '#ef4444' },
         { bytes: 2, label: 'Item State Index', color: '#ef4444' },
-        { bytes: 2, label: 'Toggle Obj. 1', color: '#ef4444' },
-        { bytes: 2, label: 'Toggle Obj. 2', color: '#ef4444' },
+        { bytes: 2, label: 'Object Reference 1', color: '#ef4444' },
+        { bytes: 2, label: 'Object Reference 2', color: '#ef4444' },
         { bytes: 2, label: 'Vertex Buffer Index (0)', color: '#ef4444' },
         { bytes: 2, label: 'Ground Offset (500)', color: '#ef4444' },
         { bytes: 2, label: 'Rotation Type (1 - Y Axis)', color: '#ef4444' },
@@ -209,20 +219,20 @@ Here is an interactive example of the block that contains the level exit from th
         { bytes: 2, label: 'Rotation Speed (30)', color: '#ef4444' },
         { bytes: 2, label: 'Animation Counter', color: '#ef4444' },
         { bytes: 2, label: 'Animation State', color: '#ef4444' },
-        { bytes: 2, label: 'Right Object ID (0 - None)', color: '#fb923c' },
-        { bytes: 30, label: 'Right Object (None)', color: '#aaa' },
-        { bytes: 2, label: 'Front Object ID (0 - None)', color: '#fb923c' },
-        { bytes: 30, label: 'Front Object (None)', color: '#aaa' },
-        { bytes: 2, label: 'Back Object ID (0 - None)', color: '#fb923c' },
-        { bytes: 30, label: 'Back Object (None)', color: '#aaa' },
-        { bytes: 2, label: 'Left Object ID (0 - None)', color: '#fb923c' },
-        { bytes: 30, label: 'Left Object (None)', color: '#aaa' },
-        { bytes: 2, label: 'Bottom Object ID (0 - None)', color: '#fb923c' },
-        { bytes: 30, label: 'Bottom Object (None)', color: '#aaa' },
+        { bytes: 2, label: 'X+ Object ID (0 - None)', color: '#fb923c' },
+        { bytes: 30, label: 'X+ Object (None)', color: '#aaa' },
+        { bytes: 2, label: 'Y+ Object ID (0 - None)', color: '#fb923c' },
+        { bytes: 30, label: 'Y+ Object (None)', color: '#aaa' },
+        { bytes: 2, label: 'Y- Object ID (0 - None)', color: '#fb923c' },
+        { bytes: 30, label: 'Y- Object (None)', color: '#aaa' },
+        { bytes: 2, label: 'X- Object ID (0 - None)', color: '#fb923c' },
+        { bytes: 30, label: 'X- Object (None)', color: '#aaa' },
+        { bytes: 2, label: 'Z+ Object ID (0 - None)', color: '#fb923c' },
+        { bytes: 30, label: 'Z+ Object (None)', color: '#aaa' },
         { bytes: 56, label: 'Padding', color: '#666' },
         { bytes: 2, label: 'Block Position X (17)', color: '#da70d6' },
-        { bytes: 2, label: 'Block Position Z (12)', color: '#da70d6' },
-        { bytes: 2, label: 'Block Position Y (17)', color: '#da70d6' },
+        { bytes: 2, label: 'Block Position Y (12)', color: '#da70d6' },
+        { bytes: 2, label: 'Block Position Z (17)', color: '#da70d6' },
     ]}
 />
 
@@ -266,31 +276,35 @@ In the alpha and beta versions of the game, the following values are required to
 | **Rotation type**  | Determines the type of rotation an object uses.  |
 | **Rotation speed** | Determines how fast an object rotates.           |
 
-### Toggle Object Fields
+### Object Reference Fields
 
-Lastly are the two **toggle object** fields, used by transporters and buttons to determine what object(s) to toggle when the parent object is toggled.
-They both act as positions, and follow this formula:
+Lastly are the two **object reference** fields, used by transporters and buttons to determine what object(s) to toggle when the parent object is toggled.
+Each value encodes a block record index and a face index as a packed 16-bit integer:
 
 ```c
-short blockRecordIndex;
-short side;
-ushort target = (blockRecordIndex * 16) + side;
+// Encoding
+short value = (blockRecordIndex << 4) | side;
+
+// Decoding
+short blockRecordIndex = value >> 4;
+short side             = value & 0xF;
 ```
 
-For example, the value `D0 01` corresponds to the block with a record at index **29**, as the maximum value for the first byte is `F0` (16), and the second byte is incremented due to 29 exceeding 16, which leaves 13 (`0xD0`).
-Since only the first digit in the byte represents the index, it would be `D0 01`.
-Lastly, the second digit in the first byte is 0, which targets the object on top of the block.
-Thus, this value targets the top side of the block with the 29th record.
+For example, the value `D0 01` (0x01D0):
 
-Another example is the value `72 01`, which corresponds to index **23**.
-Since the target side is 2, the second digit in the first byte is set as such, leaving `72 01` as a result.
-This value will target the right side of the block with the 23rd record.
+- Record index: `0x01D0 >> 4` = **29**
+- Side: `0x01D0 & 0xF` = **0** (negative z face)
+
+And `72 01` (0x0172):
+
+- Record index: `0x0172 >> 4` = **23**
+- Side: `0x0172 & 0xF` = **2** (positive x face)
+
+When targeting a laser block, the side must be set to **6**.
 
 In the alpha and beta versions of the game, buttons toggled themselves when pressed and only contain the first slot.
-In all other versions of the games, buttons have **two** slots and **do not** toggle themselves when pressed.
-This means buttons themselves need a connection, so often times one of the slots are used to toggle itself, though only **toggle object 2** can be used to power itself.
-
-When targeting a laser block, the side is set to **6**.
+In all other versions of the games, buttons have **two** slots and **do not** toggle themselves when pressed — meaning one slot is often used to point back at the button itself.
+Only the second slot (**object reference 1**) can be used this way.
 
 ## Moving Block Record<Badge type="info" text="5" />
 
@@ -298,11 +312,11 @@ A single block is placed at the starting position (current position), known as t
 Based on the length, that many blocks including the origin will be placed along the **positive** direction of the axis.
 e.g. if the direction is set to Negative X, the additional blocks will still be placed in the Positive X direction.
 
-For example, if the block length is **1**, no other blocks will be placed as the origin block is apart of the length.
+For example, a length of **1** means only the origin block itself, so no additional blocks will be placed.
 If the length is **3** and the direction is set to **1**, **2 blocks** will be placed in the **Positive X** direction.
 The maximum length a moving block can be is **4**, as the texture data the block stores in memory inside its record overwrites other information about the moving block, as well as the next record.
 
-<BinaryStruct name="MovingBlockRecord">
+<BinaryStruct name="MovingBlockRecord" size="256 bytes">
 
 | Offset(h) | Size | Type           | Description                 |
 | --------- | ---- | -------------- | --------------------------- |
@@ -354,7 +368,7 @@ Lastly, the **block ID** is set to the value that represents this record in the 
 
 ## Crumbling Block Record<Badge type="info" text="6" />
 
-<BinaryStruct name="CrumblingBlockRecord">
+<BinaryStruct name="CrumblingBlockRecord" size="256 bytes">
 
 | Offset(h) | Size | Type           | Description       |
 | --------- | ---- | -------------- | ----------------- |
@@ -376,13 +390,13 @@ Crumbling blocks have the following state values, though they should be set to *
 | 3     | The crumbling block is crumbling.                                                                         |
 | -     | Any other value causes the crumbling block to still be active, but will not produce a sound when touched. |
 
-The crumbling block contains entity positioning, set to the exact block coordinate of the crumbling block, though it seems to not be read in game.
+The crumbling block contains entity positioning, set to the exact block coordinate of the crumbling block, though it is not referenced in game.
 The **240** bytes of padding are usually set to `-1`, though in some odd cases this section will contain object data and other weird structures.
 At some point during the game's development, the crumbling block may have been intended to contain objects.
 
 ## Flashing Block Record<Badge type="info" text="7" />
 
-<BinaryStruct name="FlashingBlockRecord">
+<BinaryStruct name="FlashingBlockRecord" size="256 bytes">
 
 | Offset(h) | Size | Type          | Description                 |
 | --------- | ---- | ------------- | --------------------------- |
@@ -401,25 +415,25 @@ Occasionally, just like crumble blocks, the **240 bytes** of padding may contain
 
 ## Laser Block<Badge type="info" text="8" />
 
-<BinaryStruct name="LaserBlockRecord">
+<BinaryStruct name="LaserBlockRecord" size="256 bytes">
 
-| Offset(h) | Size | Type          | Description     |
-| --------- | ---- | ------------- | --------------- |
-| +0x00     | 2    | i16           | Record type (8) |
-| +0x02     | 2    | i16           | Direction       |
-| +0x04     | 2    | i16           | Axis (unused)   |
-| +0x06     | 2    | i16           | Enabled         |
-| +0x08     | 6    | BlockPosition | Position 1      |
-| +0x0E     | 6    | BlockPosition | Position 2      |
-| +0x14     | 14   | -             | Padding         |
-| +0x22     | 2    | i16           | Unknown (1)     |
-| +0x24     | 4    | -             | Padding         |
-| +0x28     | 2    | i16           | Block ID        |
-| +0x2A     | 2    | -             | Padding         |
-| +0x2C     | 2    | i16           | Color           |
-| +0x2E     | 2    | i16           | Toggle object   |
-| +0x30     | 202  | -             | Padding         |
-| +0xFA     | 6    | BlockPosition | Position        |
+| Offset(h) | Size | Type          | Description      |
+| --------- | ---- | ------------- | ---------------- |
+| +0x00     | 2    | i16           | Record type (8)  |
+| +0x02     | 2    | i16           | Direction        |
+| +0x04     | 2    | i16           | Axis (unused)    |
+| +0x06     | 2    | i16           | Enabled          |
+| +0x08     | 6    | BlockPosition | Position 1       |
+| +0x0E     | 6    | BlockPosition | Position 2       |
+| +0x14     | 14   | -             | Padding          |
+| +0x22     | 2    | i16           | Unknown (1)      |
+| +0x24     | 4    | -             | Padding          |
+| +0x28     | 2    | i16           | Block ID         |
+| +0x2A     | 2    | -             | Padding          |
+| +0x2C     | 2    | i16           | Color            |
+| +0x2E     | 2    | i16           | Object reference |
+| +0x30     | 202  | -             | Padding          |
+| +0xFA     | 6    | BlockPosition | Position         |
 
 </BinaryStruct>
 
@@ -428,20 +442,20 @@ If one of the positions are set to a block that isn't actually present in the fi
 
 The rest of the fields are as follows:
 
-| Field             | Description                                                                                                                              |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **Direction**     | Direction of the laser, follows the [direction table](#direction-table) above.                                                           |
-| **Color**         | The color of the laser, follows the same structure that transporters and buttons do, and can be viewed [here](/levels/objects#variant).  |
-| **Enabled**       | Whether the laser is enabled or not upon starting the level.                                                                             |
-| **Block ID**      | Same as moving blocks, set to the value that represents this record in the [block grid data](#block-grid-data) section.                  |
-| **Toggle Object** | Specifies the block and face to toggle when the laser itself is toggled, exactly like [transporters and buttons](#toggle-object-fields). |
+| Field                | Description                                                                                                                             |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Direction**        | Direction of the laser, follows the [direction table](#direction-table) above.                                                          |
+| **Color**            | The color of the laser, follows the same structure that transporters and buttons do, and can be viewed [here](/levels/objects#variant). |
+| **Enabled**          | Whether the laser is enabled or not upon starting the level.                                                                            |
+| **Block ID**         | Same as moving blocks, set to the value that represents this record in the [block grid data](#block-grid-data) section.                 |
+| **Object reference** | Specifies the object to toggle when the laser itself is toggled, exactly like [transporters and buttons](#object-reference-fields).     |
 
 ## Level Flag Record<Badge type="info" text="9" />
 
 The record is optional, and if set is always at the end directly behind the level information record.
 This record is used for setting flags for the level and does not tie to any block at all:
 
-<BinaryStruct name="LevelFlagRecord">
+<BinaryStruct name="LevelFlagRecord" size="256 bytes">
 
 | Offset(h) | Size | Type | Description                 |
 | --------- | ---- | ---- | --------------------------- |
@@ -458,7 +472,7 @@ Similar to crumble and flashing blocks, this record usually contains **a lot** o
 
 ## Level Settings Record<Badge type="info" text="666" />
 
-<BinaryStruct name="LevelSettingsRecord">
+<BinaryStruct name="LevelSettingsRecord" size="256 bytes">
 
 | Offset(h) | Size | Type          | Description         |
 | --------- | ---- | ------------- | ------------------- |
