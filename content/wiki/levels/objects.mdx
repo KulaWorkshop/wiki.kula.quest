@@ -1,6 +1,6 @@
 ---
 title: Object Table
-description: A database containing every known object and their properties.
+description: A table containing every known object and their respective properties.
 ---
 
 ## Overview
@@ -60,15 +60,15 @@ Several variants for different objects exist, and are actually used under the ho
 Transporters and buttons allow you to change their color using the this field.
 Lasers have a dedicated property for their color, but it follows the same structure.
 
-| Object       | Value 0          | Value 1           | Value 2           | Value 3 |
-| ------------ | ---------------- | ----------------- | ----------------- | ------- |
-| Coin         | Gold (750 pts.)  | Silver (500 pts.) | Bronze (250 pts.) | -       |
-| Gem          | Blue (2975 pts.) | Green (2975 pts.) | Red (2975 pts.)   | -       |
-| Exit         | Green (Unlocked) | Red (Locked)      | -                 | -       |
-| Colors       | Yellow           | Blue              | Green             | Red     |
-| Colors (old) | Blue             | Red               | Green             | Yellow  |
+| Object                  | Value 0          | Value 1           | Value 2           | Value 3 |
+| ----------------------- | ---------------- | ----------------- | ----------------- | ------- |
+| Coin                    | Gold (750 pts.)  | Silver (500 pts.) | Bronze (250 pts.) | -       |
+| Gem                     | Blue (2975 pts.) | Green (2975 pts.) | Red (2975 pts.)   | -       |
+| Exit                    | Green (Unlocked) | Red (Locked)      | -                 | -       |
+| Colors                  | Yellow           | Blue              | Green             | Red     |
+| Colors (alpha and beta) | Blue             | Red               | Green             | Yellow  |
 
-For the **first two demos specifically**, they follow a slightly different color structure on the bottom.
+For the **first two demo versions specifically**, they follow a slightly different color structure on the bottom.
 
 ### Sync
 
@@ -105,12 +105,12 @@ Depending on the side of the block the object is placed on, you can specify the 
 
 | Block Face     | Value 1    | Value 2    | Value 3    | Value 4    |
 | -------------- | ---------- | ---------- | ---------- | ---------- |
-| **Positive X** | Positive Z | Positive Y | Negative Z | Negative Y |
-| **Negative X** | Positive Z | Negative Y | Negative Z | Positive Y |
-| **Positive Y** | Positive Z | Positive X | Negative Z | Negative X |
-| **Negative Y** | Positive Z | Negative X | Negative Z | Positive X |
+| **Negative Z** | Positive Y | Negative X | Negative Y | Positive X |
+| **Positive X** | Positive Y | Negative Z | Negative Y | Positive Z |
+| **Positive Y** | Negative Z | Positive X | Positive Z | Negative X |
+| **Negative Y** | Positive Z | Positive X | Negative Z | Negative X |
+| **Negative X** | Positive Y | Positive Z | Negative Y | Negative Z |
 | **Positive Z** | Positive Y | Positive X | Negative Y | Negative X |
-| **Negative Z** | Negative Y | Positive X | Positive Y | Negative X |
 
 <Callout>
     Any other value defaults to the value **1**, and the direction for transporters specify what
@@ -124,14 +124,19 @@ It is not recommended to set its direction, and in every level they are actually
 
 ## Appearance
 
-In the alpha and beta demos for the game, objects contain 3 additional values used for setting how the object spins and how far it is off the ground.
-Here is what the 3 values refer to under the **Appearance** column:
+In the alpha and beta demos for the game, objects contained 3 additional fields for setting how the object spins and how far it is off the ground.
+The 3 values under the **Appearance** column represent the following:
 
 - Ground offset
 - Rotation type
-    - `0`: None
-    - `1`: Relative Y axis
-    - `2`: Relative Z axis
-    - `3`: Relative X axis
 - Rotation speed
     - The direction it spins on the axis depends on whether the value is positive or negative.
+
+Rotation types:
+
+| Value | Axis            |
+| ----- | --------------- |
+| 0     | None            |
+| 1     | Relative Z axis |
+| 2     | Relative Y axis |
+| 3     | Relative X axis |

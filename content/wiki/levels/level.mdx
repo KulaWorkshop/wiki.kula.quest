@@ -1,6 +1,6 @@
 ---
 title: Level Format
-description: A custom binary format for storing level information.
+description: A binary format for storing level data.
 ---
 
 import { Badge } from '@/components/badge';
@@ -10,183 +10,183 @@ import { InlineTOC } from 'fumadocs-ui/components/inline-toc';
 
 ## Overview
 
-KulaQuest uses a custom binary format for storing level data.
-This format does not have its own file extension, and is mostly the same across all versions of the games with slight differences.
+KulaQuest uses a binary format for storing level data.
+This format does not have a file extension, and is mostly the same across all versions of the game with slight differences.
+Levels are not stored on disc as standalone files, but are instead stored as part of the world's [.PAK](/archives/pak) file (the first demo uses an older [.KUB](/archives/kub) format instead).
 
-All values are in [**little endian**](https://en.wikipedia.org/wiki/Endianness), and the following data types will be used:
+## Structure
 
-| Encoding | Description           |
-| -------- | --------------------- |
-| i16      | Signed 16-bit integer |
+The format is comprised of the following sections:
 
-### Structure
+- Identifiers for every block in the grid
+- The number of blocks and records
+- Records
+- Optional level settings
 
-The format is comprised of the following structure:
+<BinaryStruct name="LevelData">
 
-- Block identifiers
-- The number of blocks and block property count
-- Block properties
-- Optional level properties
+| Offset(h) | Size                | Type                 | Description               |
+| --------- | ------------------- | -------------------- | ------------------------- |
+| 0x00000   | 78608               | i16[34 \* 34 \* 34]  | Block grid data           |
+| 0x13310   | 2                   | i16                  | Block count               |
+| 0x13312   | 2                   | i16                  | Padding                   |
+| 0x13314   | 2                   | i16                  | Record count              |
+| 0x13316   | 256 \* record_count | Record[record_count] | Records                   |
+| -         | 256                 | LevelSettings        | Level settings (optional) |
 
-| Offset(h) | Size  | Type             | Description                              |
-| --------- | ----- | ---------------- | ---------------------------------------- |
-| 0x00      | 78608 | i16[34^3]        | Identifiers for every block in the level |
-| 0x13310   | 2     | i16              | Number of blocks in the level            |
-| 0x13312   | 2     | i16              | Unused (sometimes -1)                    |
-| 0x13314   | 2     | i16              | Number of block properties in the level  |
-| 0x13316   | -     | property[]       | Block properties                         |
-| -         | 256   | level_properties | Level properties (optional)              |
+</BinaryStruct>
 
----
+## Block Grid Data
 
-Every level in the game is essentially a **34x34x34** grid of blocks, with some blocks containing extra properties.
-The first block starts on the top-left front corner of the level, which is at coordinate **0, 0, 0**.
-The last block ends on the bottom-right back corner of the level, which is at coordinate **33, 33, 33**.
+Every level in the game is a fixed **34x34x34** grid of blocks, each identified by a value inside the `block data` section that determines its type.
+The first block at coordinates (0, 0, 0) begins on the top-left-back corner of the grid, and the last block at coordinates (33, 33, 33) ends at the bottom-right-front corner of the grid:
 
-![The bounding box for the first level](/assets/levels/level-grid.webp)
+![Level grid layout](/assets/levels/grid-layout.webp)
 
-Based on the illustration above:
+The first **78,608** bytes of the file contain an array of 16-bit integers, one for each block in the grid.
+As referenced above, the first value in this section corresponds to the first block in the level (coordinates (0, 0, 0)), with the last value corresponding to the last block in the level.
+A cell at grid coordinates (x, y, z) can be accessed using the following formula:
 
-- Positive X and negative X indicate right and left respectively.
-- Positive Y and negative Y indicate down and up respectively.
-- Positive Z and negative Z indicate backward and forward respectively.
+```c
+int index = x * 34*34 + y * 34 + z;  // == x * 1156 + y * 34 + z
+int byteOffset = index * 2;
+```
 
-<Callout>
-    Level editors invert the Y axis for simplicity as it is more common for positive Y to indicate
-    up instead of down.
-</Callout>
+Each 16-bit value represents what kind of block is at that position in the grid:
 
-## Position Types
+| Value       | Block Type                                                                                                        |
+| ----------- | ----------------------------------------------------------------------------------------------------------------- |
+| -1          | Empty, no block here.                                                                                             |
+| 0           | A plain block with no special properties; i.e. a block that doesn't contain any objects or is of a specific type. |
+| 1           | A fire block, which is just a plain block but with fire patches on all sides. No objects or properties.           |
+| 2           | Same as above, but with ice patches on all sides.                                                                 |
+| 3           | Same as above, but with invisible patches on all sides.                                                           |
+| 4           | Same as above, but with acid patches on all sides.                                                                |
+| 5 and above | A special block that references a record, see below.                                                              |
+| -2          | Reserved for laser segments, in-memory usage only.                                                                |
 
-There are 2 types of positioning used in this format — **block coordinates** and **entity coordinates**.
-Here's an example of the different coordinates:
+Any value greater than or equal to **5** indicates a block that contains a record, such as a block that contains items and/or objects, a crumbling block, etc.
+The first block of this type must always start at **5**, and is incremented for each subsequent block that contains a record.
 
-- `11 00 10 00 11 00` - Block Coordinate
-- `00 22 00 20 9C 20` - Entity Coordinate
+## Coordinate System
 
-The block coordinate system is mainly used for positioning block properties and block positioning in general.
-Objects and entities in game that need to use finer position values use the entity coordinate system, such as the ball and the current moving block position.
+Two types of coordinate systems are used in this format — **block coordinates** and **entity coordinates**.
+Here's an example of both systems:
 
-An entity coordinate value is **double** the amount of a block coordinate value, and the bytes are swapped, with the first byte as fine tune.
-In the example above, we have a block with an item using the block coordinate and a ball on top of the same block using the entity coordinate.
-The X and Z values are the same, while the Y coordinate is slightly above the block.
+- `11 00 10 00 11 00` - Block coordinate
+- `00 22 00 20 9C 20` - Entity coordinate
 
-Here are the two different structures used throughout this document to define the type of positioning used:
+The block coordinate system is primarily used for referencing block positions in grid.
+Objects and entities in game that need to use a finer position value, such as the moving block and current player position, use the entity coordinate system.
 
-### Block Position
+An entity coordinate value is **double** the amount of a block coordinate value, with the bytes swapped, where the first byte is used as fine tune.
+In the examples above, we have a block at coordinates (17, 16, 17) using the block coordinate system, with the player positioned on top of it using the entity coordinate system.
+The following structures will be used to represent both systems throughout this document:
+
+<BinaryStruct name="BlockPosition">
 
 | Offset(h) | Size | Type | Description |
 | --------- | ---- | ---- | ----------- |
 | +0x00     | 2    | i16  | X position  |
-| +0x02     | 2    | i16  | Z position  |
-| +0x04     | 2    | i16  | Y position  |
+| +0x02     | 2    | i16  | Y position  |
+| +0x04     | 2    | i16  | Z position  |
 
-> Also referenced as **Position_block_t** in structures.
+</BinaryStruct>
 
-### Entity Position
+<BinaryStruct name="EntityPosition">
 
-| Offset(h) | Size | Type | Description                 |
-| --------- | ---- | ---- | --------------------------- |
-| +0x00     | 2    | i16  | X position (more precision) |
-| +0x02     | 2    | i16  | Z position (more precision) |
-| +0x04     | 2    | i16  | Y position (more precision) |
+| Offset(h) | Size | Type | Description                |
+| --------- | ---- | ---- | -------------------------- |
+| +0x00     | 2    | i16  | X position (more accuracy) |
+| +0x02     | 2    | i16  | Y position (more accuracy) |
+| +0x04     | 2    | i16  | Z position (more accuracy) |
 
-> Also referenced as **Position_entity_t** in structures.
+</BinaryStruct>
 
-## Block Identifiers
+## Direction Table
 
-The first **78608** bytes of the file contain 2 byte values that correspond to each block in the grid.
-As referenced above, the first value in this section signifies the first block in the level, which is at the top-left front corner of the level.
-The last value in this section signifies the last block in the level, which is at the bottom-right back corner of the level.
+The following table will be used throughout this document to indicate a direction based on a value.
 
-Every 2 bytes indicate a single block, each time incrementing the Y position.
-This continues until the Y position exceeds 33, where it's reset back to 0 and the Z position is incremented.
-Once the Z position exceeds 33, the X position is incremented and Y and Z are reset back to 0.
-These blocks are read until the position of the file reaches the end of the **block identifier section**, which is at offset **0x13310** (which as stated previously is the size of this section).
+| Value | Direction |
+| ----- | --------- |
+| 0     | Z-        |
+| 1     | X+        |
+| 2     | Y+        |
+| 3     | Y-        |
+| 4     | X-        |
+| 5     | Z+        |
 
-Here is a table defining what the 2 byte identifier represents:
+## Block and Record Count
 
-| ID         | Type                                                                                                               |
-| ---------- | ------------------------------------------------------------------------------------------------------------------ |
-| -1         | An air block — nothing at all is placed here, and is completely ignored.                                           |
-| 0          | A block with no special properties at all; i.e. a block that doesn't contain any objects or is of a specific type. |
-| 1          | A fire block, which is just a normal block but with fire patches on all sides with no objects or properties.       |
-| 2          | Same as above, but as an ice block.                                                                                |
-| 3          | Same as above, but as an invisible block.                                                                          |
-| 4          | Same as above, but as an acid block.                                                                               |
-| 5 or above | A block that contains special properties. See below.                                                               |
-| -2         | Reserved for laser segments, in memory usage only.                                                                 |
+Immediately after the block grid data begins these 16-bit values:
 
-Any value that is **5** or greater indicates a block with special properties and has corresponding [property data](#property-list), such as a crumbling or laser block, or a block that contains items and/or objects.
-The first block of this type must start at **5**, and is incremented for every next special block.
+<BinaryStruct name="BlockAndRecordCount">
 
-## Block and Property Count
+| Offset(h) | Size | Type | Description  |
+| --------- | ---- | ---- | ------------ |
+| 0x13310   | 2    | i16  | Block count  |
+| 0x13312   | 2    | i16  | Padding      |
+| 0x13314   | 2    | i16  | Record count |
 
-Immediately after the block identifier section begins these 3 values:
+</BinaryStruct>
 
-| Offset(h) | Size | Type | Description                             |
-| --------- | ---- | ---- | --------------------------------------- |
-| 0x13310   | 2    | i16  | Number of blocks in the level           |
-| 0x13312   | 2    | i16  | Unused (sometimes -1)                   |
-| 0x13314   | 2    | i16  | Number of block properties in the level |
+The block count does not have to be set correctly as it's not read in game.
+However, the record count is **required** as the game utilizes it to determine the number of records in the level.
+For an unknown reason, the padding value in-between is sometimes set to -1 in certain levels, and the block count value is sometimes set to a negative value.
 
-The first value does not have to be set as it's not read in game, while the third value must be set properly in order for the properties to work.
-For an unknown reason, the unused value is sometimes set to -1 in certain levels, and the first value is sometimes set to a negative number.
+## Block Records
 
-## Property List
+There are a lot of different types of special blocks used in game, each requiring additional information defined below towards the end of the file, right after the previous section.
+Each record is a chunk of **256** bytes.
+The game determiens the type of record based on the first value in the record.
 
-There are a lot of different types of special blocks used in the game, and each one needs additional information defined below at the end of the file, right after the block and property count section (**0x13316**).
-Each property is a chunk of **256 bytes**.
+## Object Block Record<Badge text="0-4" />
 
-## Object Block<Badge type="info" text="0-4" />
+The following structure applies to blocks that contain **objects**, i.e. anything that is assigned to a specific side of a block, like items and traps.
+[Moving](#moving-block), [crumbling](#crumbling-block), [flashing](#flashing-block), and [laser](#laser-block) blocks follow a different structure, and have dedicated sections respectively below.
 
-The following structure below applies to blocks that contain **objects**, i.e. anything that is assigned to a specific side of a block like items and traps. [Moving](#moving-block), [crumbling](#crumbling-block), [flashing](#flashing-block), and [laser](#laser-block) blocks follow a different structure, and have dedicated sections respectively below.
+<BinaryStruct name="ObjectBlockRecord">
 
-| Offset(h) | Size | Type                                         | Description                            |
-| --------- | ---- | -------------------------------------------- | -------------------------------------- |
-| +0x00     | 2    | i16                                          | Type of block (0-4)                    |
-| +0x02     | 32   | <a href="#object-property">object</a>        | Object on the top of the block (-y)    |
-| +0x22     | 32   | <a href="#object-property">object</a>        | Object on the right of the block (+x)  |
-| +0x42     | 32   | <a href="#object-property">object</a>        | Object on the front of the block (+z)  |
-| +0x62     | 32   | <a href="#object-property">object</a>        | Object on the back of the block (-z)   |
-| +0x82     | 32   | <a href="#object-property">object</a>        | Object on the left of the block (-x)   |
-| +0xA2     | 32   | <a href="#object-property">object</a>        | Object on the bottom of the block (+y) |
-| +0xC2     | 56   | -                                            | Padding (set to -1)                    |
-| +0xFA     | 6    | <a href="#block-position">position_block</a> | The block's position in the level      |
+| Offset(h) | Size | Type          | Description                       |
+| --------- | ---- | ------------- | --------------------------------- |
+| +0x00     | 2    | i16           | Block type (0-4)                  |
+| +0x02     | 32   | Object        | Object on the **Negative Z** side |
+| +0x22     | 32   | Object        | Object on the **Positive X** side |
+| +0x42     | 32   | Object        | Object on the **Positive Y** side |
+| +0x62     | 32   | Object        | Object on the **Negative Y** side |
+| +0x82     | 32   | Object        | Object on the **Negative X** side |
+| +0xA2     | 32   | Object        | Object on the **Positive Z** side |
+| +0xC2     | 56   | i16[28]       | Padding (-1)                      |
+| +0xFA     | 6    | BlockPosition | The block's position in the level |
 
-### Object Property
+</BinaryStruct>
 
-Each object contains **32 bytes** of information:
+Each object contains **32** bytes of information pertaining to its type, various states, and appearance:
 
-| Offset(h) | Size | Type | Description                      |
-| --------- | ---- | ---- | -------------------------------- |
-| +0x00     | 2    | i16  | Object identifier                |
-| +0x02     | 2    | i16  | Object direction                 |
-| +0x04     | 2    | i16  | Object variant                   |
-| ...       |      |      | _See struct for complete layout_ |
+<BinaryStruct name="Object">
 
-```c
-struct BlockObject_t {
-    i16_t id;
-    i16_t direction;
-    i16_t variant;
-    i16_t state;
-    i16_t collectableIndex;         // automatically set in memory
-    i16_t toggleObject1;            // buttons and transporters only
-    i16_t toggleObject2;            // buttons and transporters only
-    i16_t animationModelIndex = 0;  // memory only (related to vertex buffer index)
-    i16_t groundOffset;             // only required in demos
-    i16_t rotationType;             // only required in demos
-    i16_t animationValue1 = -1;     // memory only
-    i16_t animationValue2 = -1;     // memory only
-    i16_t animationValue3 = -1;     // memory only
-    i16_t rotationSpeed;            // only required in demos
-    i16_t animationCounter = -1;    // memory only
-    i16_t animationState = -1;      // memory only
-};
-```
+| Offset(h) | Size | Type | Description                                       |
+| --------- | ---- | ---- | ------------------------------------------------- |
+| +0x00     | 2    | i16  | ID                                                |
+| +0x02     | 2    | i16  | Direction                                         |
+| +0x04     | 2    | i16  | Variant                                           |
+| +0x06     | 2    | i16  | State                                             |
+| +0x08     | 2    | i16  | Item state index _(set automatically in memory)_  |
+| +0x0A     | 2    | i16  | Toggle object 1 _(buttons and transporters only)_ |
+| +0x0C     | 2    | i16  | Toggle object 2 _(buttons and transporters only)_ |
+| +0x0E     | 2    | i16  | Vertex buffer index (0)                           |
+| +0x10     | 2    | i16  | Ground offset _(demo only)_                       |
+| +0x12     | 2    | i16  | Rotation type _(demo only)_                       |
+| +0x14     | 2    | i16  | Animation phase 1 _(memory only, default: -1)_    |
+| +0x16     | 2    | i16  | Animation phase 2 _(memory only, default: -1)_    |
+| +0x18     | 2    | i16  | Animation phase 3 _(memory only, default: -1)_    |
+| +0x1A     | 2    | i16  | Rotation speed _(demo only)_                      |
+| +0x1C     | 2    | i16  | Animation counter _(memory only, default: -1)_    |
+| +0x1E     | 2    | i16  | Animation state _(memory only, dzefault: -1)_     |
 
-Here is an interactive example of the block that contains the level exit from the first level of HIRO, starting at the file offset `0x13310`:
+</BinaryStruct>
+
+Here is an interactive example of the block that contains the level exit from the first level of Hiro, starting at the file offset `0x13310`:
 
 <HexDump
     offset="013310h"
@@ -198,14 +198,14 @@ Here is an interactive example of the block that contains the level exit from th
         { bytes: 2, label: 'Direction', color: '#ef4444' },
         { bytes: 2, label: 'Variant', color: '#ef4444' },
         { bytes: 2, label: 'State (2 - Locked)', color: '#ef4444' },
-        { bytes: 2, label: 'Collectable Index', color: '#ef4444' },
+        { bytes: 2, label: 'Item State Index', color: '#ef4444' },
         { bytes: 2, label: 'Toggle Obj. 1', color: '#ef4444' },
         { bytes: 2, label: 'Toggle Obj. 2', color: '#ef4444' },
-        { bytes: 2, label: 'Animation Model Index', color: '#ef4444' },
+        { bytes: 2, label: 'Vertex Buffer Index (0)', color: '#ef4444' },
         { bytes: 2, label: 'Ground Offset (500)', color: '#ef4444' },
         { bytes: 2, label: 'Rotation Type (1 - Y Axis)', color: '#ef4444' },
-        { bytes: 4, label: 'Animation Values 1 and 2', color: '#ef4444' },
-        { bytes: 2, label: 'Animation Value 3', color: '#ef4444' },
+        { bytes: 4, label: 'Animation Phases 1 and 2', color: '#ef4444' },
+        { bytes: 2, label: 'Animation Phase 3', color: '#ef4444' },
         { bytes: 2, label: 'Rotation Speed (30)', color: '#ef4444' },
         { bytes: 2, label: 'Animation Counter', color: '#ef4444' },
         { bytes: 2, label: 'Animation State', color: '#ef4444' },
@@ -228,259 +228,259 @@ Here is an interactive example of the block that contains the level exit from th
 
 <Callout>
 
-A table documenting every single object and their properties is available [here](/levels/objects).
+A table documenting every object and its properties is available [here](/levels/objects).
 
 </Callout>
 
-Every object has a completely unique **ID** that indicates what item to put there, with some having different **variants** as well.
-For example, a coin has the ID of `0x25` with the following variants: **Bronze, Gold, and Blue**.
+Every object has a unique ID that is used to identify it, with some objects having different variants.
+For example, the coin has an id of `0x25`, and has the 3 following variants:
 
-An object can have several **states** as well, such as a transporter or button being turned on or off.
-Most collectables use the state field to determine whether an object has been collected by the player or not, with the state being set to **1** in the file and becoming **0** in memory when obtained.
+- Bronze
+- Gold
+- Silver
 
-Finally, the **direction** field is utilized by directional objects, such as arrows for the direction they face.
+An object can have several states, such as a transporter or button being enabled or disabled.
+Items use this value in memory to determine whether it has been collected by the player, and is set to `1` in file.
+Finally, the direction value is utilized by certain directional objects, such as arrows and the player spawn.
+If a side of a block **does not** have an object, the object ID and state are set to `0`, and the rest of the values are set to `-1`.
 
-If a side of a block **does not** contain an object, the object ID and state are set to 0, and all other values are set to -1.
+### Animation Fields
 
----
+Models in game can contain multiple **vertex buffers**, though the only object that utilizes this is the **moving spike** for its retracting animation (each frame is actually a separate vertex buffer).
+The vertex buffer index determines which buffer to use, and it **must** always be set to `0` in file, regardless of the number of vertex buffers the model contains.
 
 The following fields are automatically set in memory and are not required:
 
-- **Collectable index**: Incremented from 0 after every collectable object.
-- **Animation values**: Values used to keep track of different aspect of an object's animation.
-- **Animation state**: Determines the state of the object's animation.
-- **Animation counter**: A value to keep track of a counter for the object's animation.
+| Field                 | Description                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| **Item state index**  | Incremented from 0 after every collectable item.                                       |
+| **Animation phases**  | 3 values used to keep track of various `sin` phases of an object's spinning animation. |
+| **Animation state**   | The state of the object's animation.                                                   |
+| **Animation counter** | A counter for the object's animation.                                                  |
 
 In the alpha and beta versions of the game, the following values are required to be set, but are not read in later versions:
 
-- **Ground offset**: Determines how far an object is above the block.
-- **Rotation type**: Determines the type of rotation an object uses.
-- **Rotation speed**: Determines how fast an object rotates.
+| Field              | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| **Ground offset**  | Determines how far an object is above the block. |
+| **Rotation type**  | Determines the type of rotation an object uses.  |
+| **Rotation speed** | Determines how fast an object rotates.           |
 
----
+### Toggle Object Fields
 
-### Toggle Object
-
-Lastly are the two **toggle object** fields, which are only used by transporters and buttons to specify what object(s) to toggle when the object is toggled.
-They both act as positions, and follow this principle:
+Lastly are the two **toggle object** fields, used by transporters and buttons to determine what object(s) to toggle when the parent object is toggled.
+They both act as positions, and follow this formula:
 
 ```c
-short propertyIndex;
+short blockRecordIndex;
 short side;
-ushort position = (propertyIndex * 16) + side;
+ushort target = (blockRecordIndex * 16) + side;
 ```
 
-For example, the value `D0 01` corresponds to the block with a property at index **29**, as the maximum value for the first byte is `F0` (16), and the second byte is incremented due to 29 exceeding 16, which leaves 13. `0xD0`
+For example, the value `D0 01` corresponds to the block with a record at index **29**, as the maximum value for the first byte is `F0` (16), and the second byte is incremented due to 29 exceeding 16, which leaves 13 (`0xD0`).
 Since only the first digit in the byte represents the index, it would be `D0 01`.
 Lastly, the second digit in the first byte is 0, which targets the object on top of the block.
-This value will target the top side of the block with the 29th property.
+Thus, this value targets the top side of the block with the 29th record.
 
 Another example is the value `72 01`, which corresponds to index **23**.
 Since the target side is 2, the second digit in the first byte is set as such, leaving `72 01` as a result.
-This value will target the right side of the block with the 23rd property.
+This value will target the right side of the block with the 23rd record.
 
-In earlier versions, buttons power themselves when pressed and only contain the first slot.
-In all other versions of the games, buttons have two slots and **do not** power themselves when pressed.
-This means buttons themselves need power, so often times one of the slots are used to power itself, though only **toggle object 2** can be used to power itself.
+In the alpha and beta versions of the game, buttons toggled themselves when pressed and only contain the first slot.
+In all other versions of the games, buttons have **two** slots and **do not** toggle themselves when pressed.
+This means buttons themselves need a connection, so often times one of the slots are used to toggle itself, though only **toggle object 2** can be used to power itself.
 
-When targeting a laser block, ensure the side is set to **6**.
+When targeting a laser block, the side is set to **6**.
 
-## Moving Block<Badge type="info" text="5" />
+## Moving Block Record<Badge type="info" text="5" />
 
-| Offset(h) | Size | Type            | Description                 |
-| --------- | ---- | --------------- | --------------------------- |
-| +0x00     | 2    | i16             | Property Type (5)           |
-| +0x02     | 2    | i16             | Direction                   |
-| +0x04     | 2    | i16             | Axis                        |
-| +0x06     | 2    | i16             | Unknown                     |
-| +0x08     | 6    | position_block  | Position 1                  |
-| +0x0E     | 6    | position_block  | Position 2                  |
-| +0x14     | 12   | -               | Padding                     |
-| +0x20     | 2    | i16             | Unknown                     |
-| +0x22     | 2    | i16             | Length                      |
-| +0x24     | 2    | i16             | Speed                       |
-| +0x26     | 2    | i16             | Padding                     |
-| +0x28     | 2    | i16             | Block ID                    |
-| +0x2A     | 196  | -               | Padding                     |
-| +0xEE     | 6    | position_entity | Current Position            |
-| +0xF4     | 6    | unknown         | Unknown (00 01 00 01 00 01) |
-| +0xFA     | 6    | position_block  | Position                    |
+A single block is placed at the starting position (current position), known as the **origin**.
+Based on the length, that many blocks including the origin will be placed along the **positive** direction of the axis.
+e.g. if the direction is set to Negative X, the additional blocks will still be placed in the Positive X direction.
 
-The moving block contains 3 position values:
+For example, if the block length is **1**, no other blocks will be placed as the origin block is apart of the length.
+If the length is **3** and the direction is set to **1**, **2 blocks** will be placed in the **Positive X** direction.
+The maximum length a moving block can be is **4**, as the texture data the block stores in memory inside its record overwrites other information about the moving block, as well as the next record.
 
-- **Position 1** - Specifies one of two points that the block will move between during the level. This position must be **before** position 2 along an axis.
-- **Position 2** - Specifies the other one of two points that the block will move between, and must be positioned **after** position 1.
-- **Starting Position / Current Position** - Specifies what position the moving block will start at when the level is started. This means that the moving block can actually start at a different point along the axis than the two positions specified, though in most cases (and in all cases from the game) this position is usually the same as one of the two points above.
+<BinaryStruct name="MovingBlockRecord">
 
-![Moving blocks and their respective axes](/assets/levels/moving-block-axes.webp)
+| Offset(h) | Size | Type           | Description                 |
+| --------- | ---- | -------------- | --------------------------- |
+| +0x00     | 2    | i16            | Record type (5)             |
+| +0x02     | 2    | i16            | Direction                   |
+| +0x04     | 2    | i16            | Axis                        |
+| +0x06     | 2    | i16            | Unknown                     |
+| +0x08     | 6    | BlockPosition  | Position 1                  |
+| +0x0E     | 6    | BlockPosition  | Position 2                  |
+| +0x14     | 12   | -              | Padding                     |
+| +0x20     | 2    | i16            | Unknown                     |
+| +0x22     | 2    | i16            | Length                      |
+| +0x24     | 2    | i16            | Speed                       |
+| +0x26     | 2    | i16            | Padding                     |
+| +0x28     | 2    | i16            | Block ID                    |
+| +0x2A     | 196  | -              | Padding                     |
+| +0xEE     | 6    | EntityPosition | Current position            |
+| +0xF4     | 6    | i16[3]         | Unknown (00 01 00 01 00 01) |
+| +0xFA     | 6    | BlockPosition  | Position                    |
 
-Based on the example level seen above, position 1 (green) is always first along the axis than position 2 (blue), regardless of what direction the block is set to.
+</BinaryStruct>
 
-The direction specifies what direction the block will initially move towards on the axis:
+The moving block contains **3** position values:
 
-- `00 00` indicates Negative Y.
-- `01 00` indicates Positive X.
-- `02 00` indicates Positive Z.
-- `03 00` indicates Negative Z.
-- `04 00` indicates Negative X.
-- `05 00` indicates Positive Y.
-- Any other value causes the moving block to not move at all.
+| Field                | Description                                                                                                                                                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Position 1**       | One of two points that the block will move between during the level. This position must be **before** position 2 along the axis.                                                                                                                                     |
+| **Position 2**       | The other one of two points that the block will move between, and must be positioned **after** position 1.                                                                                                                                                           |
+| **Current Position** | The position the moving block will start at when the level is started, meaning it can start at a different point along the axis other than the two positions specified, though in all cases from the game, this position is the same as one of the two points above. |
 
-The **axis** of the moving block indicates what axis it is on, and how the texture is wrapped onto the block. If this value is not set correctly, the block's collision will not work properly and will often crash the game.
+![Moving blocks and their respective axis](/assets/levels/moving-block-axis.webp)
 
-- `00 00` indicates Y axis.
-- `01 00` indicates X axis.
-- `02 00` indicates Z axis.
-- Any other value defaults to Y axis.
+_In the diagram above, position 1 (green) is always first along the axis before position 2 (blue), regardless of what direction the block is set to._
 
-The **speed** indicates how many times the current position is incremented or decremented per frame depending on if it's moving in a positive or negative direction, respectively. Lastly, the **block ID** is set to the block ID that represents this property in the block data section.
+The direction value specifies what direction the block will initially move towards on the axis, and follows the [direction table](#direction-table) above.
+Any value other than the ones in the table will cause the moving block to not move at all.
+The **axis** field specifies the axis the block will move along, and how the texture is wrapped onto the block.
+If this value is not set correctly, the block's collision will not work properly and will often crash the game.
 
----
+| Value | Axis                                    |
+| ----- | --------------------------------------- |
+| 1     | X axis                                  |
+| 2     | Y axis                                  |
+| 5     | Z axis                                  |
+| -     | Any other value defaults to the Z axis. |
 
-A single block is placed at the starting position, which is known as the **origin**. Based on the length, that many blocks including the origin will be placed on the **positive** axis, e.g. if the direction is set to Negative X, the additional blocks will still be placed in the Positive X direction.
+The **speed** indicates how many times the current position is incremented or decremented per frame depending on if it's moving in a positive or negative direction, respectively.
+Lastly, the **block ID** is set to the value that represents this record in the [block grid data](#block-grid-data) section.
 
-For example, if the block length is **1**, no other blocks will be placed as the origin block is apart of the length. If the length is **3** and the direction is set to **1**, **2 blocks** will be placed in the **Positive X** direction. The maximum length a moving block can be is **4**, as the texture data the block stores in memory inside its property overwrites other information about the moving block, as well as the next property.
+## Crumbling Block Record<Badge type="info" text="6" />
 
-## Crumbling Block<Badge type="info" text="6" />
+<BinaryStruct name="CrumblingBlockRecord">
 
-| Offset(h) | Size | Type            | Description       |
-| --------- | ---- | --------------- | ----------------- |
-| +0x00     | 2    | i16             | Property Type (6) |
-| +0x02     | 2    | i16             | State (1)         |
-| +0x04     | 6    | position_entity | Position (entity) |
-| +0x0A     | 240  | -               | Padding           |
-| +0xFA     | 6    | position_block  | Position (block)  |
+| Offset(h) | Size | Type           | Description       |
+| --------- | ---- | -------------- | ----------------- |
+| +0x00     | 2    | i16            | Record type (6)   |
+| +0x02     | 2    | i16            | State (1)         |
+| +0x04     | 6    | EntityPosition | Position (entity) |
+| +0x0A     | 240  | -              | Padding           |
+| +0xFA     | 6    | BlockPosition  | Position (block)  |
 
-Crumbling blocks have the following state values, although they should be set to **1** in file:
+</BinaryStruct>
 
-- **0** indicates the crumble block is gone.
-- **1** indicates the crumble block is active.
-- **2** indicates the crumble block is crumbling, but is not used.
-- **3** indicates the crumble block is crumbling.
-- Any other value causes the crumble block to still be active, but will not make a sound when touched.
+Crumbling blocks have the following state values, though they should be set to **1** in file:
 
-The crumble block contains entity positioning, and are set as the exact block coordinate of the crumble block, even though it seems to not have an effect in game when changed to a different value. The **240 bytes** of padding are usually set to **-1**, but strangely enough some crumble blocks have object block data and other weird structures. Although they have no effect, it's still interesting to see that maybe some crumble blocks were intended to contain objects as well.
+| Value | Description                                                                                               |
+| ----- | --------------------------------------------------------------------------------------------------------- |
+| 0     | The crumbling block is gone                                                                               |
+| 1     | The crumbling block is active.                                                                            |
+| 2     | The crumbling block is crumbling (unused).                                                                |
+| 3     | The crumbling block is crumbling.                                                                         |
+| -     | Any other value causes the crumbling block to still be active, but will not produce a sound when touched. |
 
-## Flashing Block<Badge type="info" text="7" />
+The crumbling block contains entity positioning, set to the exact block coordinate of the crumbling block, though it seems to not be read in game.
+The **240** bytes of padding are usually set to `-1`, though in some odd cases this section will contain object data and other weird structures.
+At some point during the game's development, the crumbling block may have been intended to contain objects.
 
-| Offset(h) | Size | Type           | Description               |
-| --------- | ---- | -------------- | ------------------------- |
-| +0x00     | 2    | i16            | Property Type (7)         |
-| +0x02     | 2    | i16            | Index (-1, memory only)   |
-| +0x04     | 2    | i16            | Sync                      |
-| +0x06     | 2    | i16            | State (-1, memory only)   |
-| +0x08     | 2    | i16            | Counter (-1, memory only) |
-| +0x0A     | 240  | -              | Padding                   |
-| +0xFA     | 6    | position_block | Position                  |
+## Flashing Block Record<Badge type="info" text="7" />
+
+<BinaryStruct name="FlashingBlockRecord">
+
+| Offset(h) | Size | Type          | Description                 |
+| --------- | ---- | ------------- | --------------------------- |
+| +0x00     | 2    | i16           | Record type (7)             |
+| +0x02     | 2    | i16           | Index _(-1, memory only)_   |
+| +0x04     | 2    | i16           | Sync                        |
+| +0x06     | 2    | i16           | State _(-1, memory only)_   |
+| +0x08     | 2    | i16           | Counter _(-1, memory only)_ |
+| +0x0A     | 240  | -             | Padding                     |
+| +0xFA     | 6    | BlockPosition | Position                    |
+
+</BinaryStruct>
 
 The **sync** value is used to specify in what order of timing the flashing block will appear, similar to moving spikes.
 Occasionally, just like crumble blocks, the **240 bytes** of padding may contain weird structures, but have no affect at all.
 
 ## Laser Block<Badge type="info" text="8" />
 
-| Offset(h) | Size | Type           | Description       |
-| --------- | ---- | -------------- | ----------------- |
-| +0x00     | 2    | i16            | Property Type (8) |
-| +0x02     | 2    | i16            | Direction         |
-| +0x04     | 2    | i16            | Axis (unused)     |
-| +0x06     | 2    | i16            | Enabled           |
-| +0x08     | 6    | position_block | Position 1        |
-| +0x0E     | 6    | position_block | Position 2        |
-| +0x14     | 14   | -              | Padding           |
-| +0x22     | 2    | i16            | Unknown (1)       |
-| +0x24     | 4    | -              | Padding           |
-| +0x28     | 2    | i16            | Block ID          |
-| +0x2A     | 2    | -              | Padding           |
-| +0x2C     | 2    | i16            | Color             |
-| +0x2E     | 2    | i16            | Toggle Object     |
-| +0x30     | 202  | -              | Padding           |
-| +0xFA     | 6    | position_block | Position          |
+<BinaryStruct name="LaserBlockRecord">
 
-Position 1 and 2 specify the two points of the laser, where position 1 must always come before on the axis than position 2, similar to the [moving block](#moving-block).
-If one of the positions are set to a block that isn't actually present in the level, the game will automatically create a normal block in its place.
+| Offset(h) | Size | Type          | Description     |
+| --------- | ---- | ------------- | --------------- |
+| +0x00     | 2    | i16           | Record type (8) |
+| +0x02     | 2    | i16           | Direction       |
+| +0x04     | 2    | i16           | Axis (unused)   |
+| +0x06     | 2    | i16           | Enabled         |
+| +0x08     | 6    | BlockPosition | Position 1      |
+| +0x0E     | 6    | BlockPosition | Position 2      |
+| +0x14     | 14   | -             | Padding         |
+| +0x22     | 2    | i16           | Unknown (1)     |
+| +0x24     | 4    | -             | Padding         |
+| +0x28     | 2    | i16           | Block ID        |
+| +0x2A     | 2    | -             | Padding         |
+| +0x2C     | 2    | i16           | Color           |
+| +0x2E     | 2    | i16           | Toggle object   |
+| +0x30     | 202  | -             | Padding         |
+| +0xFA     | 6    | BlockPosition | Position        |
 
-The direction specifies the direction of the laser:
+</BinaryStruct>
 
-- `00 00` indicates Negative Y.
-- `01 00` indicates Positive X.
-- `02 00` indicates Positive Z.
-- `03 00` indicates Negative Z.
-- `04 00` indicates Negative X.
-- `05 00` indicates Positive Y.
+Position 1 and 2 specify the two points of the laser, where position 1 must always come before on the axis than position 2, exactly like [moving blocks](#moving-block-record).
+If one of the positions are set to a block that isn't actually present in the file, the game will automatically create a plain block there.
 
-The **color** property follows the same structure that transporters and buttons do, and can be viewed [here](/levels/objects#variant).
-Changing the color actually indexes into the laser's different textures, as each color is its own texture, so setting the value other than 4 changes to textures beyond the boundary, and the game will crash upon turning it on.
+The rest of the fields are as follows:
 
-**Enabled** specifies whether the laser block is enabled by default when the level is started.
-Same as moving blocks, laser's also contain a **block ID** field that should be set to the block ID that represents this property in the block data section.
+| Field             | Description                                                                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| **Direction**     | Direction of the laser, follows the [direction table](#direction-table) above.                                                           |
+| **Color**         | The color of the laser, follows the same structure that transporters and buttons do, and can be viewed [here](/levels/objects#variant).  |
+| **Enabled**       | Whether the laser is enabled or not upon starting the level.                                                                             |
+| **Block ID**      | Same as moving blocks, set to the value that represents this record in the [block grid data](#block-grid-data) section.                  |
+| **Toggle Object** | Specifies the block and face to toggle when the laser itself is toggled, exactly like [transporters and buttons](#toggle-object-fields). |
 
-Lastly, laser blocks contain a **toggle object** field for specifying which block and face to toggle when the laser's power is toggled, similar to transporters and buttons.
+## Level Flag Record<Badge type="info" text="9" />
 
-## Level Flag Property<Badge type="info" text="9" />
+The record is optional, and if set is always at the end directly behind the level information record.
+This record is used for setting flags for the level and does not tie to any block at all:
 
-The flag property is optional and if set is always behind the level information property. This property is used for setting flags for the level and does not tie to any block at all:
+<BinaryStruct name="LevelFlagRecord">
 
 | Offset(h) | Size | Type | Description                 |
 | --------- | ---- | ---- | --------------------------- |
-| +0x00     | 2    | i16  | Property Type (9)           |
-| +0x02     | 2    | i16  | Hidden Level                |
-| +0x04     | 2    | i16  | Farsighted Invisible Blocks |
+| +0x00     | 2    | i16  | Record type (9)             |
+| +0x02     | 2    | i16  | Hidden level                |
+| +0x04     | 2    | i16  | Farsighted invisible blocks |
 | +0x06     | 250  | -    | Padding                     |
 
-This property is very simple and only has two flags, which are set to true or false depending if they're set to 1 or 0 respectively.
-The first flag specifies if the current level is a **hidden level**, and the second flag specifies if the current level uses **farsighted invisible blocks**.
+</BinaryStruct>
 
-Similar to crumble and flashing blocks, this property usually contains **a lot** of weird structures in its padding, and sometimes this property is added to a level that doesn't use any of its flags.
+The structure is very simple and only has two flags, which are set to true or false depending if they're set to 1 or 0 respectively.
+The first flag specifies if the current level is a **hidden level**, and the second flag specifies if the current level uses **farsighted invisible blocks** (used in Haze).
+Similar to crumble and flashing blocks, this record usually contains **a lot** of weird structures in its padding, and sometimes this record is added to a level that doesn't use any of its flags.
 
-```
-014010h   11 00 11 00 11 00 09 00 00 00 00 00 00 00 00 00
-014020h   00 00 00 00 FF FF 00 00 FF FF FF FF FF FF FF FF
-014030h   FF FF FF FF FF FF FF FF 00 00 FF FF FF FF 00 00
-014040h   FF FF FF FF FF FF 00 00 FF FF FF FF FF FF FF FF
-014050h   FF FF FF FF FF FF FF FF 00 00 FF FF FF FF 00 00
-014060h   FF FF FF FF FF FF 00 00 FF FF FF FF FF FF FF FF
-014070h   FF FF FF FF FF FF FF FF 00 00 FF FF FF FF 00 00
-014080h   FF FF FF FF FF FF 00 00 FF FF FF FF FF FF FF FF
-014090h   FF FF FF FF FF FF FF FF 00 00 FF FF FF FF 00 00
-0140A0h   FF FF FF FF FF FF 00 00 FF FF FF FF FF FF FF FF
-0140B0h   FF FF FF FF FF FF FF FF 0A 00 00 00 00 00 01 00
-0140C0h   FF FF FF FF FF FF 00 00 00 01 03 00 FF FF FF FF
-0140D0h   FF FF 00 00 FF FF FF FF FF FF FF FF FF FF FF FF
-0140E0h   FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
-0140F0h   FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
-014100h   FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF FF
-014110h   11 00 13 00 11 00 ..
-```
+## Level Settings Record<Badge type="info" text="666" />
 
-Take this property from **LEVEL 31** as an example.
-We can see that it's definitely a flag property, but doesn't have any of its flags set.
-Even stranger however, we can see that it contains data for a bounce pad on the underside of the block, and even has a block position set for it in the next property.
-It is unknown why this occurs, but it does not have an affect on the level at all.
+<BinaryStruct name="LevelSettingsRecord">
 
-## Level Info Property<Badge type="info" text="666" />
+| Offset(h) | Size | Type          | Description         |
+| --------- | ---- | ------------- | ------------------- |
+| +0x00     | 2    | i16           | Record type (666)   |
+| +0x02     | 6    | BlockPosition | Last block modified |
+| +0x08     | 4    | i16[2]        | Unknown             |
+| +0x0C     | 2    | i16           | Start time          |
+| +0x0E     | 242  | -             | Padding             |
 
-At the end of the level binary, there is an extra property that contains basic information about the level itself. Most of these values are unknown and do not seem to have an affect on the level at all.
-This property has the type **666**, but is not tied to any block.
-
-| Offset(h) | Size | Type           | Description         |
-| --------- | ---- | -------------- | ------------------- |
-| +0x00     | 2    | i16            | Property Type (666) |
-| +0x02     | 6    | position_block | Last Block Modified |
-| +0x08     | 4    | i16[2]         | Unknown             |
-| +0x0C     | 2    | i16            | Start Time          |
-| +0x0E     | 242  | -              | Padding             |
+</BinaryStruct>
 
 <Callout>
-    Some levels do not contain this property, notably the [first alpha KulaQuest
-    demo](#version-differences). This property is not required, so the game will default to specific
-    values if this property is not present.
+    Some levels do not contain this record, notably the [first alpha KulaQuest
+    demo](#version-differences). This record is not required, so the game will default to specific
+    values if this record is not present.
 </Callout>
 
-The only confirmed value in this property is the **start time**, which specifies the amount of time the level starts with in seconds.
+The only confirmed value in this record is the **start time**, which specifies the amount of time the level starts with in seconds.
 The game calculates the amount of time by multiplying this value by **50**, which is the PAL's game framerate.
 For reference, the game decrements `currentTime` every frame of unpaused gameplay, and ends the level if it reaches 0.
 
-Based on my research, there is evidence to suggest that the position value is leftover metadata based on the **last modified block** in the original level editor used by the developers:
+It is theorized that the block position value is leftover metadata from the game's original level editor, signifying the last block that was modified in the level:
 
 1. A fruit was accidentally placed in Kula World's FINAL 3 level.
    When this fruit was removed in the next version of the game, the position value just so happened to update to the removed fruit's block position.
@@ -488,17 +488,16 @@ Based on my research, there is evidence to suggest that the position value is le
    The unknown position value also updated to the block that the gem was moved to.
 3. In the first level of the game, this position value points to the block that contains the farther right bronze coin, which happened to be moved forward and changed from a gold to a bronze coin from earlier versions of the game.
 
-This is just some examples, but one could reasonably conclude that this position value was likely metadata as it is **never** referenced from within the game's programming.
+These are just some examples, but one could reasonably conclude that this position value was likely metadata as it is **never** referenced from within the game's programming.
 It's also worth noting that this position value can be set to a block that isn't contained in the level, likely referencing a deleted block.
-
 The two **unknown short** values before the start time value are also ignored in game, but seem to be always in multiples of 5 and sometimes negative.
 
 ## Version Differences
 
-The level format remains mostly the same across all versions of the game with slight differences:
+This format remains mostly the same across all versions of the game with slight differences:
 
-- In the alpha release, there is no [level info property](#level-info-property).
-- In the beta release, the mere existence of the [level flag property](#level-flag-property) causes the level to be hidden, so no flags are required to be set.
+- In the alpha release, there is no [level settings record](#level-settings-record).
+- In the beta release, the mere existence of the [level flag record](#level-flag-record) causes the level to be hidden, so no flags are required to be set.
 
 ### Level Start Time
 
@@ -508,13 +507,13 @@ In Kula World and Roll Away, the starting level time is calculated by multiplyin
 // SLUS_007.24: 0x35F5C
 // currentTime: 0xA573C
 
-// checks if the property type is 666, meaning the level info property exists;
-// if so, set currentTime to the property's 6th index (startingTime) * 50.
-if (*propertyData == 0x29a) {
-    currentTime = propertyData[6] * 0x32;
+// checks if the record type is 666, meaning the level settings record exists;
+// if so, set currentTime to the records's 6th index (startingTime) * 50.
+if (*recordData == 0x29a) {
+    currentTime = recordData[6] * 0x32;
 }
 
-// if the level info property doesn't exist, default to 4950.
+// if the level settings record doesn't exist, default to 4950.
 else {
     currentTime = 0x1356;
 }
@@ -529,13 +528,13 @@ An additional check was added if the value is **5940**, which is the maximum tim
 // SCPS_100.64: 0x362C4
 // currentTime: 0xA12EC
 
-// checks if the block's type is 666, meaning the level info property exists;
-// if so, set currentTime to the property's 6th index (startingTime) * 50.
-if (*propertyData == 0x29a) {
-    currentTime = propertyData[6] * 0x3c;
+// checks if the block's type is 666, meaning the level settings record exists;
+// if so, set currentTime to the records's 6th index (startingTime) * 50.
+if (*recordData == 0x29a) {
+    currentTime = recordData[6] * 0x3c;
 }
 
-// if the level info property doesn't exist, default to 4950.
+// if the level settings record doesn't exist, default to 4950.
 else {
     currentTime = 0x1be4;
 }
@@ -593,7 +592,7 @@ This issue can be observed in the playthrough video _PS1 Kula World 1998 - No Co
 
 ![Screenshot of the bonus level showing all of the slow moving stars set to the wrong direction.](/assets/levels/star-oddity-bonus-30.webp)
 
-This is also the only level in any release after the alpha that does not contain the [level info property](#level-info-property).
+Also, this is also the only level in any release after the alpha that does not contain the [level settings record](#level-settings-record).
 
 ---
 
