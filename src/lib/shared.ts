@@ -5,7 +5,7 @@ export const docsContentRoute = '/llms.mdx';
 
 export const siteUrl = 'https://wiki.kula.quest';
 export const siteDescription =
-    'A comprehensive technical reference for the PlayStation 1 game KulaQuest.';
+    'A comprehensive technical wiki for the PlayStation 1 game KulaQuest.';
 export const siteAuthor = 'Brandon Gardenhire';
 export const siteKeywords = [
     'Kula World',
